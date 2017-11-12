@@ -107,6 +107,6 @@ let generate (nameGen, typeDeclsRef, freeVars0) e1 =
   expr
 
 do
-  let expr = generate (ref Set.empty, ref [], FreeVars []) e1
+  let expr = generate (ref Set.empty, ref [], BoundVars []) e1
   printfn (footer()) expr
 

@@ -49,8 +49,8 @@ type Expr =
 | Lambda of suggestedName : string option * Pat * Expr
 | App of Expr * Expr
 
-/// A set of free variables associated to an expression.
-type FreeVars = FreeVars of Var list
+/// A set of bound variables associated to an expression.
+type BoundVars = BoundVars of Var list
 
 type Pat with
   member p.Vars =
@@ -63,33 +63,33 @@ type Pat with
     | Single x -> x
     | TuplePat xs -> sprintf "(%s)" <| String.concat ", " xs
 
-type FreeVars with
+type BoundVars with
   member b.List =
-    match b with FreeVars xs -> List.rev xs
+    match b with BoundVars xs -> List.rev xs
 
   member b.TypeParamList =
-    match b with FreeVars xs -> List.rev xs |> List.map (sprintf "'%s")
+    match b with BoundVars xs -> List.rev xs |> List.map (sprintf "'%s")
 
   member b.Args =
     match b with
-    | FreeVars [] -> ""
-    | FreeVars xs ->
+    | BoundVars [] -> ""
+    | BoundVars xs ->
       b.List
       |> String.concat ", "
       |> sprintf "(%s)"
 
   member b.TypeParams =
     match b with
-    | FreeVars [] -> ""
-    | FreeVars xs ->
+    | BoundVars [] -> ""
+    | BoundVars xs ->
       b.TypeParamList
       |> String.concat ", "
       |> sprintf "<%s>"
 
   member b.TypeParamsOf =
     match b with
-    | FreeVars [] -> ""
-    | FreeVars xs ->
+    | BoundVars [] -> ""
+    | BoundVars xs ->
       b.TypeParamList
       |> String.concat " * "
       |> sprintf " of %s"
@@ -97,16 +97,16 @@ type FreeVars with
 /// A generated F# type declaration.
 type TypeDecl =
   { TypeName : string
-    TypeFreeVars : FreeVars
+    TypeBoundVars : BoundVars
     Pattern : Pat
     Code : string } with
 
   member t.GeneratedCode =
     let header = sprintf "%s%s = %s%s with"
-                         t.TypeName t.TypeFreeVars.TypeParams
-                         t.TypeName t.TypeFreeVars.TypeParamsOf
+                         t.TypeName t.TypeBoundVars.TypeParams
+                         t.TypeName t.TypeBoundVars.TypeParamsOf
     let apply = sprintf "static member inline Apply(%s%s, %s) ="
-                        t.TypeName t.TypeFreeVars.Args
+                        t.TypeName t.TypeBoundVars.Args
                         t.Pattern.GeneratedCode
     sprintf "%s\n  %s\n    %s" header apply t.Code
 
@@ -126,13 +126,13 @@ type NameGen = Set<string> ref
 /// Translate lambda calculus expression to F# type-level expression.
 /// Returns the generated type declarations and translated expression.
 let rec genExpr (nameGen : NameGen)
-                (FreeVars fvs)
+                (BoundVars fvs)
                 (prefix : string)
                 (expr : Expr)
                 : TypeDecl list * string =
   let fvs0 = freeVars expr
   let fvs = List.filter (fun x -> Set.contains x fvs0) fvs
-  let boundVars = FreeVars fvs
+  let boundVars = BoundVars fvs
 
   match expr with
   | Const c -> [], sprintf "!%s" c
@@ -159,7 +159,7 @@ let rec genExpr (nameGen : NameGen)
     tsx @ tsy, sprintf "(%s <<- %s)" gx gy
 
 /// Translate a lambda abstraction to F# type declaration.
-and genLambda (nameGen : NameGen) (pat : Pat) expr (FreeVars fvs) prefix =
+and genLambda (nameGen : NameGen) (pat : Pat) expr (BoundVars fvs) prefix =
   let fixTypeName (x : string) =
     if x = "" then
       "T_NoName"
@@ -176,10 +176,10 @@ and genLambda (nameGen : NameGen) (pat : Pat) expr (FreeVars fvs) prefix =
 
   nameGen := Set.add name !nameGen
 
-  let ts, code = genExpr nameGen (FreeVars <| pat.Vars @ fvs) prefix expr
+  let ts, code = genExpr nameGen (BoundVars <| pat.Vars @ fvs) prefix expr
   let typeDecl =
     { TypeName = name
-      TypeFreeVars = FreeVars fvs
+      TypeBoundVars = BoundVars fvs
       Pattern = pat
       Code = code }
 

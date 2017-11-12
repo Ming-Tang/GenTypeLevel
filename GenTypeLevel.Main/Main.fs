@@ -106,13 +106,13 @@ module Main =
         | Assign(v, expr) ->
           let typeDecls', _ =
             Lambda(Some v, Pat.Single "_", expr)
-            |> genExpr nameGen (FreeVars []) "E"
+            |> genExpr nameGen (BoundVars []) "E"
           typeDecls := !typeDecls @ List.rev typeDecls'
 
         | Gen ->
           //printfn "%A" !typeDecls
           let res =
-            Example.generate (nameGen, typeDecls, FreeVars []) expr1.Value
+            Example.generate (nameGen, typeDecls, BoundVars []) expr1.Value
 
           printfn ""
           printfn "//let result = !!%s" res
