@@ -73,3 +73,6 @@ let rewrite rules expr =
     | Some e1 -> loop e1 (rewrite1 rules e1)
 
   loop expr (rewrite1 rules expr)
+
+let doRewrite = rewrite [rewriteUncurry]
+

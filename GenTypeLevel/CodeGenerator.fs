@@ -33,22 +33,6 @@ type A<'a, 'b> = A of ('a -> 'b) with
 // END HEADER ---
 """
 
-let inline footer() : Format<_, _, _, _> = """
-type Zero = Zero
-type S<'a> = S of 'a
-type Succ = Succ with
-  static member inline Apply(Succ, x) = !(S x)
-
-type Plus5<'a> = 'a S S S S S
-type Plus4<'a> = 'a S S S S
-
-let res = !!%s
-let n19 : Zero Plus5 Plus5 Plus5 Plus4 = !!(!res <<- !Succ <<- !Zero)
-let intValue : int = !!(!res <<- !(A ((+) 1)) <<- !0)
-//printfn "res: %%A" res
-printfn "n19 = %%A" n19
-printfn "intValue = %%A" intValue"""
-
 type Const = string
 type Var = string
 
@@ -142,9 +126,10 @@ type NameGen = Set<string> ref
 /// Translate lambda calculus expression to F# type-level expression.
 /// Returns the generated type declarations and translated expression.
 let rec genExpr (nameGen : NameGen)
-                (expr : Expr)
                 (FreeVars fvs)
-                (prefix : string) : TypeDecl list * string =
+                (prefix : string)
+                (expr : Expr)
+                : TypeDecl list * string =
   let fvs0 = freeVars expr
   let fvs = List.filter (fun x -> Set.contains x fvs0) fvs
   let boundVars = FreeVars fvs
@@ -160,7 +145,7 @@ let rec genExpr (nameGen : NameGen)
   | Tuple xs ->
     let tss, es =
       xs
-      |> List.map (fun x -> genExpr nameGen x boundVars prefix)
+      |> List.map (fun x -> genExpr nameGen boundVars prefix x)
       |> List.unzip
 
     List.concat tss,
@@ -169,8 +154,8 @@ let rec genExpr (nameGen : NameGen)
     |> sprintf "T (%s)"
 
   | App(x, y) ->
-    let tsx, gx = genExpr nameGen x boundVars prefix
-    let tsy, gy = genExpr nameGen y boundVars prefix
+    let tsx, gx = genExpr nameGen boundVars prefix x
+    let tsy, gy = genExpr nameGen boundVars prefix y
     tsx @ tsy, sprintf "(%s <<- %s)" gx gy
 
 /// Translate a lambda abstraction to F# type declaration.
@@ -191,12 +176,13 @@ and genLambda (nameGen : NameGen) (pat : Pat) expr (FreeVars fvs) prefix =
 
   nameGen := Set.add name !nameGen
 
-  let ts, code = genExpr nameGen expr (FreeVars <| pat.Vars @ fvs) prefix
+  let ts, code = genExpr nameGen (FreeVars <| pat.Vars @ fvs) prefix expr
   let typeDecl =
     { TypeName = name
       TypeFreeVars = FreeVars fvs
       Pattern = pat
       Code = code }
+
   typeDecl :: ts, sprintf "!%s" name
 
 [<AutoOpen>]

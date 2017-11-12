@@ -1,10 +1,27 @@
 ﻿module GenTypeLevel.Example
+
+let inline footer() : Format<_, _, _, _> = """
+type Zero = Zero
+type S<'a> = S of 'a
+type Succ = Succ with
+  static member inline Apply(Succ, x) = !(S x)
+
+type Plus5<'a> = 'a S S S S S
+type Plus4<'a> = 'a S S S S
+
+let res = !!%s
+let n19 : Zero Plus5 Plus5 Plus5 Plus4 = !!(!res <<- !Succ <<- !Zero)
+let intValue : int = !!(!res <<- !(A ((+) 1)) <<- !0)
+//printfn "res: %%A" res
+printfn "n19 = %%A" n19
+printfn "intValue = %%A" intValue"""
+
 let Fold _ _ _ = failwith "For quotations only."
 let C _ _ = failwith "For quotations only."
 let E = null
 
 let (!.) x = Const x
-let (!) x = Var x
+let (!!) x = Var x
 let ln n x y = Lambda(Some n, Single x, y)
 let l x y = Lambda(None, Single x, y)
 let lt xs y = Lambda(None, TuplePat xs, y)
@@ -17,7 +34,6 @@ let gi = setName "I_" <| fromQ <@ fun x -> x @>
 
 let gsucc = setName "Succ" <| fromQ <@ fun n f x -> f (n f x) @>
 let gmap = setName "Map1" <| fromQ <@ fun f xs -> Fold (fun x xs -> C (f x) xs) E xs @>
-//printfn "%A" <@ fun f xs -> Fold (fun x xs -> C (f x) xs) E xs @>
 
 let e10 =
   let qzero() = <@ fun f x -> x @>
@@ -60,33 +76,37 @@ let e10 =
             (unbox (box n4)))
     @>
 
-let e1 = rewrite [rewriteUncurry] e10
+let e1 = doRewrite e10
 
-let typeDecls, expr =
-  genExpr (ref Set.empty)
-          e1
-          (FreeVars [])
-          "E"
+let generate (nameGen, typeDeclsRef, freeVars0) e1 =
+  printfn "module Generated"
+  printfn "(* -----------"
+  printfn "%s" <| showExpr e1
+  printfn "   ----------- *)"
 
-printfn "module Generated"
-printfn "(* -----------"
-printfn "%s" <| showExpr e1
-printfn "   ----------- *)"
+  let typeDecls, expr = genExpr nameGen freeVars0 "E" e1
+  let typeDecls = List.rev typeDecls
 
-let tupleImpls =
-  tupleSizes e1
-  |> Set.ofSeq
-  |> Set.union (set [2;3])
-  |> Seq.map genTupleImpl
-  |> String.concat "\n"
+  let tupleImpls =
+    tupleSizes e1
+    |> Set.ofSeq
+    |> Set.union (set [2;3])
+    |> Seq.map genTupleImpl
+    |> String.concat "\n"
 
-printfn (header()) tupleImpls
+  printfn (header()) tupleImpls
 
-let mutable prefix = "type"
-for typeDecl in List.rev typeDecls do
-  printfn "%s %s" prefix typeDecl.GeneratedCode
-  printfn ""
-  prefix <- "and"
+  let mutable prefix = "type"
 
-printfn (footer()) expr
+  typeDeclsRef := !typeDeclsRef @ typeDecls
+  for typeDecl in !typeDeclsRef do
+    printfn "%s %s" prefix typeDecl.GeneratedCode
+    printfn ""
+    prefix <- "and"
+
+  expr
+
+do
+  let expr = generate (ref Set.empty, ref [], FreeVars []) e1
+  printfn (footer()) expr
 
