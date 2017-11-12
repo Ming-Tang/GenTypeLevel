@@ -123,6 +123,9 @@ let rec freeVars expr =
 /// State variable for generating unique names.
 type NameGen = Set<string> ref
 
+// TODO rename phase: free var -> F# type name
+// TOOD change NameGen -> Context. include name lookup
+
 /// Translate lambda calculus expression to F# type-level expression.
 /// Returns the generated type declarations and translated expression.
 let rec genExpr (nameGen : NameGen)

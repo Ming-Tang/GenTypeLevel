@@ -92,6 +92,8 @@ module Main =
   let typeDecls : TypeDecl list ref = ref []
   let mutable expr1 = None
 
+  let assigns = ref []
+
   let rec loop() =
     let line = readLine()
     if line.Trim() = "" then
@@ -104,19 +106,28 @@ module Main =
         //printfn "%A" res
         match res with
         | Assign(v, expr) ->
-          let typeDecls', _ =
-            Lambda(Some v, Pat.Single "_", expr)
-            |> genExpr nameGen (BoundVars []) "E"
-          typeDecls := !typeDecls @ List.rev typeDecls'
+          assigns := (v, expr) :: !assigns
+          //let typeDecls', _ =
+          //  Lambda(Some v, Pat.Single "_", expr)
+          //  |> genExpr nameGen (BoundVars []) "E"
+          //typeDecls := !typeDecls @ List.rev typeDecls'
 
         | Gen ->
           //printfn "%A" !typeDecls
-          let res =
-            Example.generate (nameGen, typeDecls, BoundVars []) expr1.Value
+          let expr =
+            !assigns
+            |> List.fold (fun body (name, def) ->
+                 App(Lambda(Some(sprintf "Let_%s" name),
+                            Pat.Single name, body),
+                            setName name def)
+               ) expr1.Value
+          //let expr = App(expr, Const "()")
+          let res = doRewrite expr
+                    |> Example.generate (nameGen, typeDecls, BoundVars [])
 
           printfn ""
-          printfn "//let result = !!%s" res
-          printfn "//printfn \"%%A\" result"
+          printfn "let result = !!(%s)" res
+          printfn "printfn \"%%A\" result"
 
         | Eval e -> expr1 <- Some e
 
@@ -124,6 +135,7 @@ module Main =
           expr1 <- None
           nameGen := Set.empty
           typeDecls := []
+          assigns := []
 
         | _ -> ()
 
