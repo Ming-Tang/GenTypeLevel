@@ -34,6 +34,12 @@ let rewriteUncurry expr =
     Some(App(Lambda(name, TuplePat vars, body), Tuple args))
   | e -> None
 
+let rewriteSingleTuple expr =
+  match expr with
+  | Lambda(n, TuplePat [x], e) -> Some <| Lambda(n, Single x, e)
+  | Tuple [x] -> Some x
+  | _ -> None
+
 type RewriteRule = Expr -> Expr option
 
 /// Perform one iteration of rewriting on an expression.
@@ -74,5 +80,5 @@ let rewrite rules expr =
 
   loop expr (rewrite1 rules expr)
 
-let doRewrite = rewrite [rewriteUncurry]
+let doRewrite = rewrite [rewriteSingleTuple; rewriteUncurry]
 

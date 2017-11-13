@@ -4,7 +4,7 @@ open FParsec
 
 [<AutoOpen>]
 module ExprParser =
-  let ws, ws1 = spaces, spaces1
+  let ws = spaces
   let str_ws s = pstring s .>> ws
 
   let ident =
@@ -58,25 +58,17 @@ module ExprParser =
 
 type Cmd =
 | Assign of Var * Expr
-| Eval of Expr
-| Del of Var
-| Gen
-| Clear
+| Eval of Var * Expr
 
 [<AutoOpen>]
 module CmdParser =
-  let assignArrow = str_ws "=" <|> str_ws ":="
+  let assignArrow, evalArrow = str_ws "=", str_ws ":="
   let assign = ident .>>. (assignArrow >>. expr <|> lamBody assignArrow)
-  let del = (str_ws ":del" >>. ident) |>> Del
-  let gen = str_ws ":gen" |>> (fun _ -> Gen)
-  let clear = str_ws ":clear" |>> (fun _ -> Clear)
+  let eval = ident .>>. (evalArrow >>. expr)
 
-  let cmd : Parser<_, _> =
-    choice [ del
-             gen
-             clear
-             attempt (assign |>> Assign)
-             expr |>> Eval ]
+  let cmd =
+    choice [ attempt (assign |>> Assign)
+             eval |>> Eval ]
 
 do
   let makeApp = List.reduce (fun a b -> App(a, b))
@@ -84,61 +76,45 @@ do
 
 module Main =
   open System
-  let readLine() =
-    eprintf "> "
-    Console.ReadLine()
 
-  let nameGen = ref Set.empty
-  let typeDecls : TypeDecl list ref = ref []
-  let mutable expr1 = None
+  exception ParseFailure of string * string
 
-  let assigns = ref []
+  [<EntryPoint>]
+  let main args =
+    try
+      let cmds =
+        Seq.initInfinite (fun _ -> Console.ReadLine())
+        |> Seq.zip (Seq.initInfinite id)
+        |> Seq.takeWhile (fun (n, line) -> line <> null)
+        |> Seq.filter (fun (n, line) -> line <> "")
+        |> Seq.map (fun (n, line) ->
+          match run cmd line with
+          | Success(cmd, _, _) -> cmd
+          | Failure(msg, _, _) -> raise <| ParseFailure(line, msg))
+        |> Seq.cache
 
-  let rec loop() =
-    let line = readLine()
-    if line.Trim() = "" then
-      loop()
-    elif line <> null then
-      let res = line |> run CmdParser.cmd
-      match res with
-      | Failure(msg, e1, _) -> printfn "%s" line; printfn "%A" e1
-      | Success(res, _, _) ->
-        //printfn "%A" res
-        match res with
-        | Assign(v, expr) ->
-          assigns := (v, expr) :: !assigns
-          //let typeDecls', _ =
-          //  Lambda(Some v, Pat.Single "_", expr)
-          //  |> genExpr nameGen (BoundVars []) "E"
-          //typeDecls := !typeDecls @ List.rev typeDecls'
+      let evals = Seq.choose (function Eval(v, e) -> Some(v, e) | _ -> None) cmds
+      let assigns = Seq.choose (function Assign(v, e) -> Some(v, e) | _ -> None) cmds
+      let vars = evals |> Seq.map fst
+      let resExpr = evals |> Seq.map snd |> List.ofSeq |> Expr.Tuple
 
-        | Gen ->
-          //printfn "%A" !typeDecls
-          let expr =
-            !assigns
-            |> List.fold (fun body (name, def) ->
-                 App(Lambda(Some(sprintf "Let_%s" name),
-                            Pat.Single name, body),
-                            setName name def)
-               ) expr1.Value
-          //let expr = App(expr, Const "()")
-          let res = doRewrite expr
-                    |> Example.generate (nameGen, typeDecls, BoundVars [])
+      let assembledExpr =
+        Seq.foldBack (fun (v, e) innerExpr ->
+         App(Lambda(Some(sprintf "Let_%s" v), Pat.Single v, innerExpr), setName v e))
+            assigns resExpr
+        |> doRewrite
 
-          printfn ""
-          printfn "let result = !!(%s)" res
-          printfn "printfn \"%%A\" result"
+      let aexpr = GenTypeLevel.Example.generate
+                    (ref Set.empty, ref [], BoundVars []) assembledExpr
 
-        | Eval e -> expr1 <- Some e
+      let varsTuple = String.concat ", " vars
+      printfn "let %s = !!(%s)" varsTuple aexpr
+      printfn "printfn \"%s = %%A\" (%s)" varsTuple varsTuple
+      0
 
-        | Clear ->
-          expr1 <- None
-          nameGen := Set.empty
-          typeDecls := []
-          assigns := []
+    with
+    | ParseFailure(line, msg) ->
+      printfn "%s" line
+      printfn "%s" msg
+      1
 
-        | _ -> ()
-
-      loop()
-
-  loop()
